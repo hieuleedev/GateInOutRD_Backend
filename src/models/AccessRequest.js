@@ -1,0 +1,66 @@
+const { DataTypes } = require('sequelize');
+const sequelize = require('../config/database');
+const User = require('./User');
+
+const AccessRequest = sequelize.define('AccessRequest', {
+    id: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      autoIncrement: true,
+      primaryKey: true
+    },
+  
+    user_id: {
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: false
+    },
+
+    factory_id: {                 // 👈 thêm field này
+        type: DataTypes.BIGINT.UNSIGNED,
+        allowNull: false
+      },
+
+    approval_levels: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 1
+    },
+    current_approval_level: {
+        type: DataTypes.INTEGER,
+        allowNull: false,
+        defaultValue: 0
+    },
+
+    approved_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    }, 
+      
+    card_id: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: false
+    },
+  
+    planned_out_time: {
+      type: DataTypes.DATE,
+      allowNull: false
+    },
+  
+    planned_in_time: {
+      type: DataTypes.DATE,
+      allowNull: false
+    },
+  
+    reason: DataTypes.TEXT,
+  
+    status: {
+      type: DataTypes.ENUM('PENDING', 'APPROVED', 'REJECTED'),
+      defaultValue: 'PENDING'
+    }
+  
+  }, {
+    tableName: 'access_requests',
+    timestamps: true
+  });
+  
+  module.exports = AccessRequest;
+  
