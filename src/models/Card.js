@@ -9,14 +9,21 @@ const Card = sequelize.define('Card', {
     },
     card_code: {
       type: DataTypes.STRING,
-      unique: true // mã thẻ / mã QR
+      allowNull: false,
+      unique: true
     },
     room: {
       type: DataTypes.STRING // phòng quản lý thẻ
     },
     qr_token: {
       type: DataTypes.STRING // token gắn vào QR
+    },
+    department_id: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: false,
+      
     }
+  
   }, {
     tableName: 'cards',
     timestamps: false

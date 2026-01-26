@@ -20,8 +20,8 @@ const AccessRequestApproval = sequelize.define('AccessRequestApproval', {
     },
   
     decision: {
-      type: DataTypes.ENUM('APPROVED', 'REJECTED'),
-      allowNull: false
+      type: DataTypes.ENUM('PENDING','APPROVED', 'REJECTED'),
+      allowNull: true
     },
   
     comment: {

@@ -6,7 +6,7 @@ const User = require('../models/User');
 exports.getStaffInMyDepartment = async (req, res) => {
   try {
     const userId = req.user.id; // lấy từ middleware auth
-
+    console.log("usser",userId)
     // Lấy user hiện tại
     const currentUser = await User.findOne({
       where: { id: userId }
@@ -28,7 +28,7 @@ exports.getStaffInMyDepartment = async (req, res) => {
         'id',
         'MSNV',
         'FullName',
-        'MailAddress',
+        'MailAdress',
         'Division',
         'PositionDetail',
         'Avatar'

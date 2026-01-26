@@ -1,4 +1,5 @@
 const User = require('../models/User');
+const Department = require('../models/Department');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { secret, expiresIn } = require('../config/jwt');
@@ -18,8 +19,16 @@ exports.login = async (req, res) => {
 
     // 2️⃣ Tìm user
     const user = await User.findOne({
-      where: { MSNV: username }
+      where: { MSNV: username },
+      include: [
+        {
+          model: Department,
+          as: 'department',
+          attributes: ['id', 'NameDept'] // chỉnh theo DB của bạn
+        }
+      ]
     });
+    
 
     if (!user) {
       return res.status(401).json({
@@ -62,7 +71,13 @@ exports.login = async (req, res) => {
         Division: user.Division,
         Admin: user.Admin,
         IDDepartment: user.IDDepartment,
-        Avatar: user.Avatar
+        Avatar: user.Avatar.Admin,
+        department: user.department
+        ? {
+            id: user.department.id,
+            NameDept: user.department.NameDept
+          }
+        : null
       }
     });
 

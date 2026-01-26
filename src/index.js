@@ -5,6 +5,7 @@ const {initDB} = require('./models');
 const authRoutes = require('./routes/auth.route');
 const userRoutes = require('./routes/user.route');
 const factoryRoutes = require('./routes/factory.route');
+const accessRequestRoute = require('./routes/accessRequest.route');
 
 const app = express();
 
@@ -21,6 +22,7 @@ initDB();
 app.use('/api/users', userRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/factories', factoryRoutes);
+app.use('/api/access-requests', accessRequestRoute);
 
 app.listen(3000, () => {
   console.log('🚀 Server running at http://localhost:3000');
