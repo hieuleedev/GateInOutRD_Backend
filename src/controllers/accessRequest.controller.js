@@ -15,7 +15,7 @@ import {
   getUserApprovePosition,
   getUserCheckManager
 } from '../utils/user.util.js';
-
+import { sendMail } from '../utils/mail.util.js';
 import sequelize from '../config/database.js';
 import { Op, fn, col, literal } from 'sequelize';
 
@@ -390,6 +390,7 @@ export const getAccessRequestsByApprover = async (req, res) => {
 
 export const approveRequest = async (req, res) => {
   try {
+    const approveLink = `${process.env.WEB_URL}/requests`;
     const requestId = req.params.id;
     const userId = req.user.id;
 
@@ -441,9 +442,49 @@ export const approveRequest = async (req, res) => {
         user_id: nextApproval.approver_id,
         title: 'Yêu cầu cần duyệt',
         content: 'Bạn có một yêu cầu ra/vào cổng cần duyệt',
-        type: 'REQUEST_APPROVED',
+        type: 'REQUEST_CREATED',
         reference_id: requestId
       });
+
+      // 📧 MAIL cho approver kế tiếp
+      const nextUser = await User.findByPk(nextApproval.approver_id);
+      if (nextUser?.MailAdress) {
+        
+
+        await sendMail({
+          to: nextUser.MailAdress,
+          subject: 'Yêu cầu ra/vào cổng cần phê duyệt',
+          html: `
+            <p>Xin chào <b>${nextUser.FullName}</b>,</p>
+            <p>Bạn có một <b>yêu cầu ra/vào cổng</b> cần phê duyệt.</p>
+        
+            <p style="margin:16px 0;">
+              👉 <a 
+                href="${approveLink}" 
+                target="_blank"
+                style="
+                  display:inline-block;
+                  padding:10px 16px;
+                  background:#2563eb;
+                  color:#ffffff;
+                  text-decoration:none;
+                  border-radius:6px;
+                  font-weight:600;
+                "
+              >
+                Xem & phê duyệt yêu cầu
+              </a>
+            </p>
+        
+            <p>Hoặc truy cập: <br/>
+              <a href="${approveLink}" target="_blank">${approveLink}</a>
+            </p>
+        
+            <p>Trân trọng,<br/>Hệ thống Security</p>
+          `
+        });
+        
+      }
 
     } else {
       // 5️⃣ Không còn bước nào → duyệt xong
@@ -464,6 +505,48 @@ export const approveRequest = async (req, res) => {
         type: 'REQUEST_APPROVED',
         reference_id: requestId
       });
+
+      // 📧 MAIL cho người tạo đơn
+      const requestUser = await User.findByPk(request.user_id);
+
+      if (requestUser?.MailAdress) {
+        const viewLink = `${process.env.WEB_URL}/access-requests/${requestId}`;
+      
+        await sendMail({
+          to: requestUser.MailAdress,
+          subject: 'Yêu cầu ra/vào cổng đã được duyệt',
+          html: `
+            <p>Xin chào <b>${requestUser.FullName}</b>,</p>
+      
+            <p>Yêu cầu ra/vào cổng của bạn đã được <b>duyệt hoàn tất</b>.</p>
+      
+            <p style="margin:16px 0;">
+              👉 <a 
+                href="${viewLink}" 
+                target="_blank"
+                style="
+                  display:inline-block;
+                  padding:10px 16px;
+                  background:#ffffff;
+                  color:#ffffff;
+                  text-decoration:none;
+                  border-radius:6px;
+                  font-weight:600;
+                "
+              >
+                Xem chi tiết yêu cầu
+              </a>
+            </p>
+      
+            <p>Hoặc truy cập trực tiếp: <br/>
+              <a href="${viewLink}" target="_blank">${viewLink}</a>
+            </p>
+      
+            <p>Trân trọng,<br/>Hệ thống Security</p>
+          `
+        });
+      }
+      
     }
 
     return res.json({ message: 'Approved successfully' });
@@ -513,23 +596,23 @@ export const rejectRequest = async (req, res) => {
     // 3️⃣ Reject bước hiện tại + lưu reason
     await currentApproval.update({
       decision: 'REJECTED',
-      
-      comment: reason // 👈 CẦN CỘT NÀY TRONG DB
+      comment: reason
     });
 
     // 4️⃣ Update request → REJECTED
     await AccessRequest.update(
       {
         status: 'REJECTED',
-        approved_at: new Date(),
-       // comment: reason // (nếu muốn lưu ở bảng cha)
+        approved_at: new Date()
       },
       { where: { id: requestId } }
     );
 
-    // 5️⃣ Notify người tạo đơn
+    // 5️⃣ Notify + MAIL người tạo đơn
     const request = await AccessRequest.findByPk(requestId);
+    const requestUser = await User.findByPk(request.user_id);
 
+    // 🔔 Notification
     await Notification.create({
       user_id: request.user_id,
       title: 'Yêu cầu bị từ chối',
@@ -537,6 +620,55 @@ export const rejectRequest = async (req, res) => {
       type: 'REQUEST_REJECTED',
       reference_id: requestId
     });
+
+    // 📧 MAIL
+    if (requestUser?.MailAdress) {
+      const viewLink = `${process.env.WEB_URL}/access-requests/${requestId}`;
+
+      await sendMail({
+        to: requestUser.MailAdress,
+        subject: 'Yêu cầu ra/vào cổng bị từ chối',
+        html: `
+          <p>Xin chào <b>${requestUser.FullName}</b>,</p>
+
+          <p>Yêu cầu ra/vào cổng của bạn đã bị <b style="color:#dc2626">từ chối</b>.</p>
+
+          <p><b>Lý do:</b></p>
+          <blockquote style="
+            border-left:4px solid #dc2626;
+            padding-left:12px;
+            color:#374151;
+            margin:8px 0;
+          ">
+            ${reason}
+          </blockquote>
+
+          <p style="margin:16px 0;">
+            👉 <a 
+              href="${viewLink}" 
+              target="_blank"
+              style="
+                display:inline-block;
+                padding:10px 16px;
+                background:#dc2626;
+                color:#ffffff;
+                text-decoration:none;
+                border-radius:6px;
+                font-weight:600;
+              "
+            >
+              Xem chi tiết yêu cầu
+            </a>
+          </p>
+
+          <p>Hoặc truy cập trực tiếp: <br/>
+            <a href="${viewLink}" target="_blank">${viewLink}</a>
+          </p>
+
+          <p>Trân trọng,<br/>Hệ thống Security</p>
+        `
+      });
+    }
 
     return res.json({ message: 'Rejected successfully' });
 
