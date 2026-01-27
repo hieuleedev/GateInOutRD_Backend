@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { createAccessRequest,getAccessRequestsByApprover ,approveRequest,rejectRequest} = require('../controllers/accessRequest.controller');
+const { createAccessRequest,getAccessRequestsByApprover ,approveRequest, rejectRequest, getAllAccessHistory} = require('../controllers/accessRequest.controller');
 const authMiddleware = require('../middlewares/auth.middleware');
 
 router.post(
@@ -28,5 +28,8 @@ router.post(
   authMiddleware,
   rejectRequest
 );
+
+router.get('/history/all', authMiddleware, getAllAccessHistory);
+
 
 module.exports = router;

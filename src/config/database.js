@@ -8,7 +8,12 @@ const sequelize = new Sequelize(
     host: process.env.DB_HOST,
     dialect: 'mysql',
     logging: false,
-    timezone: '+07:00'
+    timezone: '+07:00',
+    dialectOptions: {
+      timezone: '+07:00',  // ✅ Thêm dòng này
+      // Nếu dùng MySQL 8+, có thể cần:
+      // dateStrings: true,
+    }
   }
 );
 

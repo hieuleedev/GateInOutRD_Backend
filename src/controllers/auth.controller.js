@@ -71,7 +71,7 @@ exports.login = async (req, res) => {
         Division: user.Division,
         Admin: user.Admin,
         IDDepartment: user.IDDepartment,
-        Avatar: user.Avatar.Admin,
+        Avatar: user.Avatar,
         department: user.department
         ? {
             id: user.department.id,

@@ -6,6 +6,10 @@ const authRoutes = require('./routes/auth.route');
 const userRoutes = require('./routes/user.route');
 const factoryRoutes = require('./routes/factory.route');
 const accessRequestRoute = require('./routes/accessRequest.route');
+const cardRoute = require('./routes/card.route');
+const fileRoute = require('./routes/file.route');
+const notificationRoute = require('./routes/notification.route');
+const path = require('path');
 
 const app = express();
 
@@ -18,12 +22,17 @@ app.use(cors({
 app.use(express.json());
 
 initDB();
-
+app.use(
+  '/uploads/avatar',
+  express.static(path.join(__dirname, 'uploads/avatar'))
+);
+app.use('/api/notifications', notificationRoute);
+app.use('/files', fileRoute);
 app.use('/api/users', userRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/factories', factoryRoutes);
 app.use('/api/access-requests', accessRequestRoute);
-
+app.use('/api/card', cardRoute);
 app.listen(3000, () => {
   console.log('🚀 Server running at http://localhost:3000');
 });

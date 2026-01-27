@@ -5,7 +5,9 @@ import {
   AccessRequestCompanion,
   AccessRequestApproval,
   Factory,
-  Notification
+  Notification,
+  AccessLog,
+  Department
 } from '../models/index.js';
 
 import {
@@ -478,6 +480,13 @@ export const rejectRequest = async (req, res) => {
   try {
     const requestId = req.params.id;
     const userId = req.user.id;
+    const { reason } = req.body;
+
+    if (!reason || reason.trim() === '') {
+      return res.status(400).json({
+        message: 'Vui lòng nhập lý do từ chối'
+      });
+    }
 
     // 1️⃣ Lấy approval đang PENDING
     const currentApproval = await AccessRequestApproval.findOne({
@@ -501,16 +510,19 @@ export const rejectRequest = async (req, res) => {
       });
     }
 
-    // 3️⃣ Reject bước hiện tại
+    // 3️⃣ Reject bước hiện tại + lưu reason
     await currentApproval.update({
       decision: 'REJECTED',
-      approved_at: new Date()
+      
+      comment: reason // 👈 CẦN CỘT NÀY TRONG DB
     });
 
     // 4️⃣ Update request → REJECTED
     await AccessRequest.update(
       {
-        status: 'REJECTED'
+        status: 'REJECTED',
+        approved_at: new Date(),
+       // comment: reason // (nếu muốn lưu ở bảng cha)
       },
       { where: { id: requestId } }
     );
@@ -521,7 +533,7 @@ export const rejectRequest = async (req, res) => {
     await Notification.create({
       user_id: request.user_id,
       title: 'Yêu cầu bị từ chối',
-      content: 'Yêu cầu ra/vào cổng của bạn đã bị từ chối',
+      content: `Yêu cầu ra/vào cổng của bạn đã bị từ chối. Lý do: ${reason}`,
       type: 'REQUEST_REJECTED',
       reference_id: requestId
     });
@@ -534,3 +546,45 @@ export const rejectRequest = async (req, res) => {
   }
 };
 
+export const getAllAccessHistory = async (req, res) => {
+  try {
+    const data = await AccessRequest.findAll({
+      order: [['createdAt', 'DESC']],
+      include: [
+        {
+          model: User,
+          as: 'user',
+          attributes: ['id', 'MSNV', 'FullName'],
+          include: [
+            {
+              model: Department,
+              as: 'department',
+              attributes: ['NameDept'],
+              required: false
+            }
+          ],
+          required: false
+        },
+        {
+          model: AccessLog,
+          as: 'logs',
+          order: [['access_time', 'ASC']],
+          required: false
+        }
+      ]
+    });
+
+    return res.json({
+      success: true,
+      data: data || []
+    });
+
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      success: false,
+      message: 'Lỗi lấy toàn bộ lịch sử ra/vào cổng',
+      data: []
+    });
+  }
+};
