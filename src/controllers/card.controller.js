@@ -8,6 +8,7 @@ import AccessLog from '../models/AccessLog.js';
 import User from '../models/User.js';
 import Department from '../models/Department.js';
 import { Factory } from '../models/index.js';
+import { formatVNTime } from '../utils/time.js';
 
 import {
   getGroupByUserId,
@@ -79,81 +80,145 @@ export const getAccessCardInfo = async (req, res) => {
     });
     
     if (!accessRequest) {
-        const lastRequest = await AccessRequest.findOne({
-          where: { card_id: cardData.id },
-          order: [['createdAt', 'DESC']],
-          include: [
-            {
-              model: User,
-              as: 'user',
-              attributes: ['id', 'MSNV', 'FullName', 'Division'],
-              include: [
-                {
-                  model: Department,
-                  as: 'department',
-                  attributes: ['NameDept'],
-                },
-              ],
-            },
-            { model: Factory, as: 'factory' },
-            {
-                model: AccessRequestCompanion,
-                as: 'companions',
-                include: [
-                  {
-                    model: User,
-                    as: 'user',
-                    attributes: ['id', 'FullName', 'Avatar'],
-                  },
-                ],
+      const lastRequest = await AccessRequest.findOne({
+        where: { card_id: cardData.id },
+        order: [["createdAt", "DESC"]],
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "MSNV", "FullName", "Division"],
+            include: [
+              {
+                model: Department,
+                as: "department",
+                attributes: ["NameDept"],
               },
-          ],
-        });
-      
-        if (!lastRequest) {
-          return res.json({
-            card: cardData,
-            allowed: false,
-            message: 'Không có yêu cầu ra/vào',
-          });
-        }
-      
-        // 🔹 Lấy người duyệt
-        const approval = await getUserApprovePosition(lastRequest.user_id);
-        // giả sử approval.email tồn tại
-      
-        // 🔹 Gửi mail (KHÔNG UPDATE DB)
-        await sendMail({
-          to: approval?.MailAdress,
-          subject: '[ACCESS] Yêu cầu ra/vào cần duyệt lại',
-          html: `
-            <p>Chào anh,${approval?.FullName}</p>
-      
-            <p>Yêu cầu ra/vào sau đây đã bị <b>hết đăng ký</b> khi quẹt thẻ:</p>
-      
-            <ul>
-              <li><b>Nhân viên:</b> ${lastRequest.user.FullName} (${lastRequest.user.MSNV})</li>
-              <li><b>Bộ phận:</b> ${lastRequest.user.department?.NameDept || '-'}</li>
-              <li><b>Nhà máy:</b> ${lastRequest.factory?.name || '-'}</li>
-              <li><b>Thời gian đăng ký:</b>
-                ${lastRequest.planned_out_time} → ${lastRequest.planned_in_time}
-              </li>
-            </ul>
-      
-            <p>Vui lòng truy cập hệ thống để <b>duyệt lại yêu cầu vào ngày mai</b>.</p>
-      
-            <p>— Access Control System</p>
-          `,
-        });
-      
+            ],
+          },
+          { model: Factory, as: "factory" },
+          {
+            model: AccessRequestCompanion,
+            as: "companions",
+            include: [
+              {
+                model: User,
+                as: "user",
+                attributes: ["id", "FullName", "Avatar"],
+              },
+            ],
+          },
+        ],
+      });
+    
+      if (!lastRequest) {
         return res.json({
           card: cardData,
           allowed: false,
-          note: 'Sai thời gian đăng ký. Đã gửi mail cho người duyệt.',
+          message: "Không có yêu cầu ra/vào",
+        });
+      }
+    
+      // ===============================
+      // 1) Check giới hạn gửi mail
+      // ===============================
+      const MAX_MAIL_SENT = 2; // gửi tối đa 2 lần (0->1->2). Lần thứ 3 trở đi không gửi nữa
+    
+      const currentCount = lastRequest.mail_sent_count ?? 0;
+    
+      if (currentCount >= MAX_MAIL_SENT) {
+        return res.json({
+          card: cardData,
+          allowed: false,
+          note: `Sai thời gian đăng ký. Mail đã gửi ${currentCount} lần, không gửi nữa.`,
           access_request: lastRequest,
         });
       }
-      
+    
+      // ===============================
+      // 2) Lấy người duyệt
+      // ===============================
+      const approval = await getUserApprovePosition(lastRequest.user_id);
+    
+      if (!approval?.MailAdress) {
+        return res.json({
+          card: cardData,
+          allowed: false,
+          note: "Sai thời gian đăng ký nhưng không tìm thấy email người duyệt.",
+          access_request: lastRequest,
+        });
+      }
+    
+      const viewLink = `${process.env.WEB_URL}/access-requests/${lastRequest.id}`;
+    
+      // ===============================
+      // 3) Update DB trước (atomic)
+      //    tránh spam khi quẹt nhiều lần
+      // ===============================
+      const [affectedRows] = await AccessRequest.update(
+        { mail_sent_count: currentCount + 1 },
+        {
+          where: {
+            id: lastRequest.id,
+            mail_sent_count: currentCount, // điều kiện để chống race condition
+          },
+        }
+      );
+    
+      // Nếu không update được nghĩa là có request khác vừa tăng count rồi => không gửi nữa
+      if (affectedRows === 0) {
+        return res.json({
+          card: cardData,
+          allowed: false,
+          note: "Mail đã được gửi trước đó. Không gửi nữa.",
+          access_request: lastRequest,
+        });
+      }
+    
+      // ===============================
+      // 4) Gửi mail
+      // ===============================
+      await sendMail({
+        to: approval.MailAdress,
+        subject: "[ACCESS] Yêu cầu ra/vào cần duyệt lại",
+        html: `
+          <p>Chào anh, ${approval.FullName}</p>
+    
+          <p>
+            Yêu cầu ra/vào sau đây đã <b>không hợp lệ</b> do thời gian quẹt thẻ
+            <b>không nằm trong khung thời gian đăng ký</b>.
+          </p>
+    
+          <ul>
+            <li><b>Nhân viên:</b> ${lastRequest.user.FullName} (${lastRequest.user.MSNV})</li>
+            <li><b>Bộ phận:</b> ${lastRequest.user.department?.NameDept || "-"}</li>
+            <li><b>Đơn vị tác nghiệp:</b> ${lastRequest.factory?.factory_name || "-"}</li>
+            <li><b>Lí do ra cổng:</b> ${lastRequest.reason || "-"}</li>
+            <li><b>Thời gian đăng ký:</b>
+              ${formatVNTime(lastRequest.planned_out_time)} → ${formatVNTime(lastRequest.planned_in_time)}
+            </li>
+          </ul>
+    
+          <p>Vui lòng truy cập hệ thống để <b>duyệt lại yêu cầu</b>.</p>
+          <p>Hoặc truy cập trực tiếp: <br/>
+            <a href="${viewLink}" target="_blank">${viewLink}</a>
+          </p>
+    
+          <p>— Access Control System</p>
+        `,
+      });
+    
+      return res.json({
+        card: cardData,
+        allowed: false,
+        note: `Sai thời gian đăng ký. Đã gửi mail cho người duyệt (${currentCount + 1}/${MAX_MAIL_SENT}).`,
+        access_request: {
+          ...lastRequest.toJSON(),
+          mail_sent_count: currentCount + 1,
+        },
+      });
+    }
+    
 
     // 3️⃣ Access logs
     const logs = await AccessLog.findAll({

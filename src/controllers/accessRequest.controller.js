@@ -289,7 +289,14 @@ export const getAccessRequestsByApprover = async (req, res) => {
             {
               model: User,
               as: 'user',
-              attributes: ['id', 'FullName','Division','MSNV']
+              attributes: ['id', 'FullName','Division','MSNV'],
+              include: [
+                {
+                  model: Department,
+                  as: 'department',
+                  attributes: ['id', 'NameDept']
+                }
+              ]
             },
             {
               model: Factory,
@@ -319,7 +326,8 @@ export const getAccessRequestsByApprover = async (req, res) => {
                 {
                   model: User,
                   as: 'approver',
-                  attributes: ['id', 'FullName']
+                  attributes: ['id', 'FullName'],
+                 
                 }
               ],
               order: [['id', 'ASC']]
@@ -718,5 +726,30 @@ export const getAllAccessHistory = async (req, res) => {
       message: 'Lỗi lấy toàn bộ lịch sử ra/vào cổng',
       data: []
     });
+  }
+};
+
+export const extraApproveRequest = async (req, res) => {
+  try {
+    const requestId = Number(req.params.id);
+    const approverId = req.user?.id; // lấy từ auth.middleware
+
+    if (!requestId) {
+      return res.status(400).json({ message: "requestId không hợp lệ" });
+    }
+    // Nếu chưa xong thì tăng level
+    await AccessRequest.update(
+      {
+        extra_approval_required: 1, // duyệt bổ sung xong thì reset
+      },
+      { where: { id: requestId} }
+    );
+
+    return res.json({
+      message: "Duyệt bổ sung thành công.",
+    });
+  } catch (err) {
+    console.error("extraApproveRequest error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
 };

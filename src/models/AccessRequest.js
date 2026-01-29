@@ -30,6 +30,20 @@ const AccessRequest = sequelize.define('AccessRequest', {
         defaultValue: 0
     },
 
+    mail_sent_count: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      defaultValue: 0
+    },
+
+    extra_approval_required: {
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    },
+    
+    
+
     approved_at: {
         type: DataTypes.DATE,
         allowNull: true
