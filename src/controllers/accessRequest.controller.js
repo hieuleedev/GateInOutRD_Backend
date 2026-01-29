@@ -168,6 +168,44 @@ export const createAccessRequest = async (req, res) => {
       where: { department_id: user.IDDepartment },
       transaction: t
     });
+    // Theem moi
+      // Parse time
+        const newStart = new Date(checkInTime);
+        const newEnd = new Date(checkOutTime);
+
+        if (newStart >= newEnd) {
+          await t.rollback();
+          return res.status(400).json({ message: "Giờ ra phải nhỏ hơn giờ vào" });
+        }
+
+        // 🚫 Check trùng khung giờ theo card_id
+        const conflict = await AccessRequest.findOne({
+          where: {
+            card_id: card.id,
+            status: { [Op.notIn]: ["REJECTED", "CANCELLED"] }, // chỉ tính đơn còn hiệu lực
+            [Op.and]: [
+              { planned_out_time: { [Op.lt]: newEnd } },  // existingStart < newEnd
+              { planned_in_time: { [Op.gt]: newStart } }, // existingEnd > newStart
+            ]
+          },
+          transaction: t,
+          lock: t.LOCK.UPDATE, // tránh race condition
+        });
+
+        if (conflict) {
+          await t.rollback();
+          return res.status(400).json({
+            message: "Khung giờ đăng ký bị trùng với đơn khác của phòng (thẻ đã được sử dụng)",
+            conflict: {
+              request_id: conflict.id,
+              from: conflict.planned_out_time,
+              to: conflict.planned_in_time,
+            }
+          });
+        }
+
+
+    //
 
     if (!card) {
       await t.rollback();
