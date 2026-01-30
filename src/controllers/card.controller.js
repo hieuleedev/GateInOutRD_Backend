@@ -241,7 +241,17 @@ export const getAccessCardInfo = async (req, res) => {
     } else {
       action = logs.length % 2 === 0 ? 'OUT' : 'IN';
     }
-
+    if (accessRequest.status === 'REJECTED' || accessRequest.status === 'PENDING') {
+      return res.json({
+        card: cardData,
+        allowed: false,
+        action,
+        persisted: false, // ❗ không ghi log
+        access_request: accessRequest,
+        message: "Yêu cầu chưa được duyệt hoặc đã bị từ chối",
+      });
+    }
+    
     if (inserted) {
       await AccessLog.create({
         user_id: accessRequest.user_id,
@@ -255,16 +265,6 @@ export const getAccessCardInfo = async (req, res) => {
     }
 
     // ⚠️ FIX BUG: dùng === thay vì =
-    if (accessRequest.status === 'REJECTED' || accessRequest.status === 'PENDING') {
-      return res.json({
-        card: cardData,
-        allowed: false,
-        action,
-        persisted: inserted,
-        access_request: accessRequest,
-      });
-    }
-
     return res.json({
       card: cardData,
       allowed: true,
