@@ -151,9 +151,20 @@ export const createAccessRequest = async (req, res) => {
 
     const user_id = req.user.id;
 
-    if (!factory_id || !checkInTime || !checkOutTime) {
+    const missingFields = [];
+
+    if (!factory_id) missingFields.push("Thiếu đơn vị tác nghiệp");
+    if (!checkInTime) missingFields.push("Thiếu Thời gian vào");
+    if (!checkOutTime) missingFields.push("Thiếu Thời gian ra");
+    if (!reason) missingFields.push("Thiếu lý do ra cổng");
+    
+    if (missingFields.length > 0) {
       await t.rollback();
-      return res.status(400).json({ message: 'Thiếu thông tin bắt buộc' });
+    
+      return res.status(400).json({
+        message: `Thiếu thông tin bắt buộc: ${missingFields.join(", ")}`,
+        missingFields,
+      });
     }
 
     // 1️⃣ Lấy user + department
@@ -172,10 +183,21 @@ export const createAccessRequest = async (req, res) => {
       // Parse time
         const newStart = new Date(checkInTime);
         const newEnd = new Date(checkOutTime);
-
+        if (isNaN(newStart.getTime()) || isNaN(newEnd.getTime())) {
+          await t.rollback();
+          return res.status(400).json({ message: "Thời gian vào/ra không hợp lệ" });
+        }
+        
         if (newStart >= newEnd) {
           await t.rollback();
-          return res.status(400).json({ message: "Giờ ra phải nhỏ hơn giờ vào" });
+          return res.status(400).json({ message: "Giờ ra phải lớn hơn giờ vào" });
+        }
+        
+        if (newEnd < now) {
+          await t.rollback();
+          return res.status(400).json({
+            message: "Giờ ra không được nhỏ hơn thời gian hiện tại",
+          });
         }
 
         // 🚫 Check trùng khung giờ theo card_id
@@ -384,7 +406,8 @@ export const getAccessRequestsByApprover = async (req, res) => {
           model: AccessRequestApproval,
           as: 'approvals',
           where: {
-            approver_id: approverId
+            approver_id: approverId,
+            decision: {[Op.in]:['PENDING','APPROVED','REJECTED']}
           },
           attributes: []
         }
