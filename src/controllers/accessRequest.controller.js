@@ -183,6 +183,7 @@ export const createAccessRequest = async (req, res) => {
       // Parse time
         const newStart = new Date(checkInTime);
         const newEnd = new Date(checkOutTime);
+        const now = new Date();
         if (isNaN(newStart.getTime()) || isNaN(newEnd.getTime())) {
           await t.rollback();
           return res.status(400).json({ message: "Thời gian vào/ra không hợp lệ" });
@@ -200,31 +201,69 @@ export const createAccessRequest = async (req, res) => {
           });
         }
 
+        const formatDateTimeVN = (date) => {
+          const d = new Date(date);
+          const pad = (n) => String(n).padStart(2, "0");
+          return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(
+            d.getHours()
+          )}:${pad(d.getMinutes())}`;
+        };
+
         // 🚫 Check trùng khung giờ theo card_id
         const conflict = await AccessRequest.findOne({
           where: {
             card_id: card.id,
-            status: { [Op.notIn]: ["REJECTED", "CANCELLED"] }, // chỉ tính đơn còn hiệu lực
+            status: { [Op.notIn]: ["REJECTED", "CANCELLED"] },
+        
             [Op.and]: [
-              { planned_out_time: { [Op.lt]: newEnd } },  // existingStart < newEnd
-              { planned_in_time: { [Op.gt]: newStart } }, // existingEnd > newStart
-            ]
+              // existing_start < new_end
+              { planned_out_time: { [Op.lt]: newEnd } },
+        
+              // existing_end > new_start
+              { planned_in_time: { [Op.gt]: newStart } },
+            ],
           },
+          include: [
+            {
+              model: User,
+              as: "user",
+              attributes: ["id", "FullName", "MSNV", "MailAdress"],
+            },
+          ],
           transaction: t,
-          lock: t.LOCK.UPDATE, // tránh race condition
+          lock: t.LOCK.UPDATE,
         });
 
         if (conflict) {
           await t.rollback();
+        
+          const registeredBy = conflict.user
+            ? `${conflict.user.FullName} (${conflict.user.MSNV || conflict.user.MailAdress})`
+            : "Không xác định";
+        
+          const timeFrom = formatDateTimeVN(conflict.planned_out_time);
+          const timeTo = formatDateTimeVN(conflict.planned_in_time);
+        
           return res.status(400).json({
-            message: "Khung giờ đăng ký bị trùng với đơn khác của phòng (thẻ đã được sử dụng)",
+            message: `Khung giờ đăng ký bị trùng với đơn khác của phòng (thẻ đã được sử dụng). Đơn trùng: #${conflict.id} | Người đăng ký: ${registeredBy} | Thời gian: ${timeFrom} -> ${timeTo}`,
             conflict: {
               request_id: conflict.id,
-              from: conflict.planned_out_time,
-              to: conflict.planned_in_time,
-            }
+              registered_by: conflict.user
+                ? {
+                    id: conflict.user.id,
+                    full_name: conflict.user.full_name,
+                    username: conflict.user.username,
+                    email: conflict.user.email,
+                  }
+                : null,
+              time_range: {
+                from: timeFrom,
+                to: timeTo,
+              },
+            },
           });
         }
+        
 
 
     //
