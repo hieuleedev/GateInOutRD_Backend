@@ -134,9 +134,9 @@ AccessLog.belongsTo(AccessRequest, {
 });
 
 /* ===== Department ↔ Card ===== */
-Department.hasOne(Card, {
+Department.hasMany(Card, {
   foreignKey: 'department_id',
-  as: 'card'
+  as: 'cards'
 });
 
 Card.belongsTo(Department, {
@@ -162,7 +162,7 @@ const initDB = async () => {
     await sequelize.authenticate();
     console.log('✅ MySQL connected');
 
-    await sequelize.sync({ alter: false });
+    await sequelize.sync({ alter: true });
     console.log('✅ Database synced');
   } catch (err) {
     console.error('❌ DB error:', err);
