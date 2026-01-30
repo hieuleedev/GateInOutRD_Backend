@@ -162,7 +162,7 @@ const initDB = async () => {
     await sequelize.authenticate();
     console.log('✅ MySQL connected');
 
-    await sequelize.sync({ alter: true });
+    await sequelize.sync({ alter: false });
     console.log('✅ Database synced');
   } catch (err) {
     console.error('❌ DB error:', err);

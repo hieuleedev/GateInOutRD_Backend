@@ -7,7 +7,8 @@ import {
   Factory,
   Notification,
   AccessLog,
-  Department
+  Department,
+  Position
 } from '../models/index.js';
 
 import {
@@ -175,10 +176,19 @@ export const createAccessRequest = async (req, res) => {
     }
 
     // 2️⃣ Lấy card theo department
-    const card = await Card.findOne({
-      where: { department_id: user.IDDepartment },
-      transaction: t
-    });
+// 2️⃣ Lấy danh sách card theo department (phòng có nhiều thẻ)
+      const cards = await Card.findAll({
+        where: { department_id: user.IDDepartment },
+        order: [["id", "ASC"]], // ưu tiên thẻ theo id nhỏ trước
+        transaction: t,
+        lock: t.LOCK.UPDATE,
+      });
+
+      if (!cards || cards.length === 0) {
+        await t.rollback();
+        return res.status(400).json({ message: "Phòng chưa được cấp thẻ" });
+      }
+
     // Theem moi
       // Parse time
         const newStart = new Date(checkInTime);
@@ -201,6 +211,7 @@ export const createAccessRequest = async (req, res) => {
           });
         }
 
+        // helper format thời gian VN
         const formatDateTimeVN = (date) => {
           const d = new Date(date);
           const pad = (n) => String(n).padStart(2, "0");
@@ -209,69 +220,88 @@ export const createAccessRequest = async (req, res) => {
           )}:${pad(d.getMinutes())}`;
         };
 
-        // 🚫 Check trùng khung giờ theo card_id
-        const conflict = await AccessRequest.findOne({
-          where: {
-            card_id: card.id,
-            status: { [Op.notIn]: ["REJECTED", "CANCELLED"] },
-        
-            [Op.and]: [
-              // existing_start < new_end
-              { planned_out_time: { [Op.lt]: newEnd } },
-        
-              // existing_end > new_start
-              { planned_in_time: { [Op.gt]: newStart } },
-            ],
-          },
-          include: [
-            {
-              model: User,
-              as: "user",
-              attributes: ["id", "FullName", "MSNV", "MailAdress"],
-            },
-          ],
-          transaction: t,
-          lock: t.LOCK.UPDATE,
-        });
+        // 3️⃣ Tìm card trống theo khung giờ: thẻ 1 -> thẻ 2 -> thẻ 3
+        let selectedCard = null;
 
-        if (conflict) {
-          await t.rollback();
-        
+        // lưu danh sách các thẻ bị bận (để trả về nếu full)
+        const busyCards = [];
+
+        for (const c of cards) {
+          const conflict = await AccessRequest.findOne({
+            where: {
+              card_id: c.id,
+              status: { [Op.notIn]: ["REJECTED", "CANCELLED"] },
+              [Op.and]: [
+                { planned_out_time: { [Op.lt]: newEnd } }, // existing_start < new_end
+                { planned_in_time: { [Op.gt]: newStart } }, // existing_end > new_start
+              ],
+            },
+            include: [
+              {
+                model: User,
+                as: "user",
+                attributes: ["id", "FullName", "MSNV", "MailAdress"],
+              },
+            ],
+            transaction: t,
+            lock: t.LOCK.UPDATE,
+          });
+
+          // nếu không trùng -> chọn thẻ này
+          if (!conflict) {
+            selectedCard = c;
+            break;
+          }
+
           const registeredBy = conflict.user
             ? `${conflict.user.FullName} (${conflict.user.MSNV || conflict.user.MailAdress})`
             : "Không xác định";
-        
-          const timeFrom = formatDateTimeVN(conflict.planned_out_time);
-          const timeTo = formatDateTimeVN(conflict.planned_in_time);
-        
-          return res.status(400).json({
-            message: `Khung giờ đăng ký bị trùng với đơn khác của phòng (thẻ đã được sử dụng). Đơn trùng: #${conflict.id} | Người đăng ký: ${registeredBy} | Thời gian: ${timeFrom} -> ${timeTo}`,
-            conflict: {
-              request_id: conflict.id,
-              registered_by: conflict.user
-                ? {
-                    id: conflict.user.id,
-                    full_name: conflict.user.full_name,
-                    username: conflict.user.username,
-                    email: conflict.user.email,
-                  }
-                : null,
-              time_range: {
-                from: timeFrom,
-                to: timeTo,
-              },
+
+          busyCards.push({
+            card_id: c.id,
+            card_code: c.card_code,
+            request_id: conflict.id,
+            registered_by: registeredBy,
+            time_range: {
+              from: formatDateTimeVN(conflict.planned_out_time),
+              to: formatDateTimeVN(conflict.planned_in_time),
             },
           });
         }
-        
+
+        // Nếu full cả 3 thẻ
+        if (!selectedCard) {
+          await t.rollback();
+
+          // build message chi tiết
+          const requestedFrom = formatDateTimeVN(newStart);
+          const requestedTo = formatDateTimeVN(newEnd);
+
+          const details = busyCards
+            .map(
+              (x, idx) =>
+                `Thẻ ${idx + 1} (${x.card_code}) đang được sử dụng bởi ${x.registered_by} | Đơn #${x.request_id} | ${x.time_range.from} -> ${x.time_range.to}`
+            )
+            .join(" ; ");
+
+          return res.status(400).json({
+            message:
+              `Khung giờ đăng ký bị trùng (${requestedFrom} -> ${requestedTo}). ` +
+              `Cả 3 thẻ của phòng đang được sử dụng. ` +
+              `Chi tiết: ${details}. ` +
+              `Vui lòng chọn khung giờ khác.`,
+            busyCards,
+          });
+        }
+
 
 
     //
-
-    if (!card) {
+    if (!cards || cards.length === 0) {
       await t.rollback();
-      return res.status(400).json({ message: 'Phòng chưa được cấp thẻ' });
+      return res.status(400).json({ message: "Phòng chưa được cấp thẻ" });
     }
+    
 
     // 3️⃣ Xác định người duyệt
     const manager = await getUserCheckManager(user_id);        // cấp 2
@@ -281,7 +311,7 @@ export const createAccessRequest = async (req, res) => {
     const request = await AccessRequest.create({
       user_id,
       factory_id: Number(factory_id),
-      card_id: card.id,
+      card_id: selectedCard.id,
       planned_out_time: checkInTime,
       planned_in_time: checkOutTime,
       reason,
@@ -554,42 +584,118 @@ export const approveRequest = async (req, res) => {
         reference_id: requestId
       });
 
+      const requestDetail = await AccessRequest.findByPk(requestId, {
+        include: [
+          {
+            model: User,
+            as: "user",
+            attributes: ["id", "FullName", "MSNV", "MailAdress"],
+            include: [
+              { model: Department, as: "department", attributes: ["id", "NameDept"] },
+              { model: Position, as: "position", attributes: ["id", "NamePosition"] },
+            ],
+          },
+          {
+            model: Factory,
+            as: "factory",
+            attributes: ["id", "factory_name"], // tuỳ tên field của Factory
+          },
+          {
+            model: AccessRequestCompanion,
+            as: "companions",
+            include: [
+              {
+                model: User,
+                as: "user",
+                attributes: ["id", "FullName", "MSNV", "MailAdress"],
+              },
+            ],
+          },
+        ],
+      });
+      
+      const companionsText =
+      requestDetail?.companions?.length > 0
+    ? requestDetail.companions
+        .map((c, idx) => {
+          const u = c.user;
+          if (!u) return null;
+          return `${idx + 1}. ${u.FullName} (${u.MSNV || u.MailAdress || "N/A"})`;
+        })
+        .filter(Boolean)
+        .join("<br/>")
+    : "Không có";
+
+
       // 📧 MAIL cho approver kế tiếp
       const nextUser = await User.findByPk(nextApproval.approver_id);
       if (nextUser?.MailAdress) {
         
-
+        const formatVN = (date) => {
+          const d = new Date(date);
+          const pad = (n) => String(n).padStart(2, "0");
+          return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(
+            d.getHours()
+          )}:${pad(d.getMinutes())}`;
+        };
         await sendMail({
           to: nextUser.MailAdress,
-          subject: 'Yêu cầu ra/vào cổng cần phê duyệt',
+          subject: "Yêu cầu xác nhận/phê duyệt ra vào cổng",
           html: `
             <p>Xin chào <b>${nextUser.FullName}</b>,</p>
-            <p>Bạn có một <b>yêu cầu ra/vào cổng</b> cần phê duyệt.</p>
+            <p><b>Bạn có đơn đăng ký cần xác nhận/phê duyệt</b></p>
+        
+            <table style="width:100%;border-collapse:collapse;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
+              <tbody>
+                <tr>
+                  <td style="padding:8px 10px;"><b>Tên nhân sự</b></td>
+                  <td style="padding:8px 10px;">${requestDetail?.user?.FullName || ""}</td>
+                  <td style="padding:8px 10px;"><b>MSNV</b></td>
+                  <td style="padding:8px 10px;">${requestDetail?.user?.MSNV || ""}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 10px;"><b>Phòng ban</b></td>
+                  <td style="padding:8px 10px;">${requestDetail?.user?.department?.NameDept || ""}</td>
+                  <td style="padding:8px 10px;"><b>Chức vụ</b></td>
+                  <td style="padding:8px 10px;">${requestDetail?.user?.position?.NamePosition || ""}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 10px;"><b>Đơn vị tác nghiệp</b></td>
+                  <td style="padding:8px 10px;" colspan="3">${requestDetail?.factory?.factory_name || ""}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 10px;"><b>Mục đích</b></td>
+                  <td style="padding:8px 10px;" colspan="3">${requestDetail?.reason || ""}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 10px;"><b>Thời gian ra</b></td>
+                  <td style="padding:8px 10px;">${formatVN(requestDetail?.planned_out_time)}</td>
+                  <td style="padding:8px 10px;"><b>Thời gian vào</b></td>
+                  <td style="padding:8px 10px;">${formatVN(requestDetail?.planned_in_time)}</td>
+                </tr>
+                <tr>
+                  <td style="padding:8px 10px;"><b>Nhân sự đi cùng</b></td>
+                  <td style="padding:8px 10px;" colspan="3">${companionsText}</td>
+                </tr>
+              </tbody>
+            </table>
         
             <p style="margin:16px 0;">
-              👉 <a 
-                href="${approveLink}" 
-                target="_blank"
-                style="
-                  display:inline-block;
-                  padding:10px 16px;
-                  background:#2563eb;
-                  color:#ffffff;
-                  text-decoration:none;
-                  border-radius:6px;
-                  font-weight:600;
-                "
-              >
+              👉 <a href="${approveLink}" target="_blank"
+                style="display:inline-block;padding:10px 16px;background:#2563eb;color:#fff;text-decoration:none;border-radius:6px;font-weight:600;">
                 Xem & phê duyệt yêu cầu
               </a>
             </p>
         
-            <p>Hoặc truy cập: <br/>
-              <a href="${approveLink}" target="_blank">${approveLink}</a>
-            </p>
+            <p style="margin:0;">Link: <a href="${approveLink}" target="_blank">${approveLink}</a></p>
         
-            <p>Trân trọng,<br/>Hệ thống Security</p>
-          `
+            <hr style="margin:18px 0;border:none;border-top:1px solid #e5e7eb;" />
+        
+            <p style="font-size:13px;color:#6b7280;margin:0;">
+              Đây là hệ thống quản lý ra vào cổng tự động.<br/>
+              Vui lòng không phản hồi lại Email này.
+            </p>
+          `,
         });
         
       }
@@ -622,11 +728,11 @@ export const approveRequest = async (req, res) => {
       
         await sendMail({
           to: requestUser.MailAdress,
-          subject: 'Yêu cầu ra/vào cổng đã được duyệt',
+          subject: 'Kết quả phê duyệt ra vào cổng',
           html: `
             <p>Xin chào <b>${requestUser.FullName}</b>,</p>
       
-            <p>Yêu cầu ra/vào cổng của bạn đã được <b>duyệt hoàn tất</b>.</p>
+            <p>Đơn đăng ký của bạn đã đươc <b>duyệt hoàn tất</b>.</p>
       
             <p style="margin:16px 0;">
               👉 <a 
@@ -650,7 +756,10 @@ export const approveRequest = async (req, res) => {
               <a href="${viewLink}" target="_blank">${viewLink}</a>
             </p>
       
-            <p>Trân trọng,<br/>Hệ thống Security</p>
+            <p style="font-size:13px;color:#6b7280;">
+            Đây là hệ thống quản lý ra vào cổng tự động.<br/>
+            Vui lòng không phản hồi lại Email này.
+          </p>
           `
         });
       }
@@ -735,11 +844,11 @@ export const rejectRequest = async (req, res) => {
 
       await sendMail({
         to: requestUser.MailAdress,
-        subject: 'Yêu cầu ra/vào cổng bị từ chối',
+        subject: 'Kết quả phê duyệt ra vào cổng',
         html: `
           <p>Xin chào <b>${requestUser.FullName}</b>,</p>
 
-          <p>Yêu cầu ra/vào cổng của bạn đã bị <b style="color:#dc2626">từ chối</b>.</p>
+          <p>Đơn đăng ký của bạn đã bị <b style="color:#dc2626">từ chối</b>.</p>
 
           <p><b>Lý do:</b></p>
           <blockquote style="
@@ -773,7 +882,10 @@ export const rejectRequest = async (req, res) => {
             <a href="${viewLink}" target="_blank">${viewLink}</a>
           </p>
 
-          <p>Trân trọng,<br/>Hệ thống Security</p>
+          <p style="font-size:13px;color:#6b7280;">
+          Đây là hệ thống quản lý ra vào cổng tự động.<br/>
+          Vui lòng không phản hồi lại Email này.
+        </p>
         `
       });
     }

@@ -204,7 +204,10 @@ export const getAccessCardInfo = async (req, res) => {
             <a href="${viewLink}" target="_blank">${viewLink}</a>
           </p>
     
-          <p>— Access Control System</p>
+          <p style="font-size:13px;color:#6b7280;">
+          Đây là hệ thống quản lý ra vào cổng tự động.<br/>
+          Vui lòng không phản hồi lại Email này.
+        </p>
         `,
       });
     
