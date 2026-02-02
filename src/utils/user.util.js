@@ -111,15 +111,18 @@ const getUserApprovePosition = async (userId) => {
   
       case 'Thiết kế chuyên môn':
         // duyệt theo position hiện tại
-        return getApproversByPositionId(4);
+        return getApproversByPositionId(5);
   
       case 'Thiết kế ô tô':
         return getApproversByPositionId(5);
   
       case 'Ban lãnh đạo':
         // lãnh đạo → duyệt cấp cao
-        return getApproversByPositionId(5);
-  
+        return getApproversByPositionId(1);
+      case 'Mô phỏng & Thử nghiệm':
+          // lãnh đạo → duyệt cấp cao
+          return getApproversByPositionId(5);
+
       default:
         return null;
     }
