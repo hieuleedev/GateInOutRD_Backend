@@ -1,5 +1,6 @@
 const Notification = require('../models/Notification');
-
+const { FcmToken } = require("../models");
+const { sendToTokens } = require("../utils/fcm.util");
 /**
  * GET /api/notifications
  * Lấy danh sách thông báo của user đang đăng nhập
@@ -91,3 +92,26 @@ exports.getUnreadCount = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error' });
   }
 };
+exports.pushToUser = async (req, res) => {
+  try {
+    const { userId, title, body, data } = req.body;
+
+    const fcmTokens = await FcmToken.findAll({
+      where: { user_id: userId },
+      attributes: ["token"],
+    });
+
+    const tokens = fcmTokens.map((t) => t.token).filter(Boolean);
+
+    if (!tokens.length) {
+      return res.status(404).json({ message: "User chưa có token" });
+    }
+
+    const result = await sendToTokens(tokens, title, body, data);
+
+    return res.json({ message: "Gửi thành công", result });
+  } catch (err) {
+    console.log(err);
+    return res.status(500).json({ message: "Lỗi server", error: err.message });
+  }
+}

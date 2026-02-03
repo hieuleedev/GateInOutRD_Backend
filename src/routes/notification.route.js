@@ -15,4 +15,6 @@ router.patch('/:id/read', authMiddleware, notificationController.markAsRead);
 // đọc tất cả
 router.patch('/read-all', authMiddleware, notificationController.markAllAsRead);
 
+router.post("/push-user", notificationController.pushToUser);
+
 module.exports = router;

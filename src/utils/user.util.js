@@ -1,4 +1,4 @@
-const { User, Department, Position } = require('../models');
+const { User, Department, Position, FcmToken } = require('../models');
 
 /**
  * Lấy user kèm department + position
@@ -166,6 +166,18 @@ const getUserApprovePosition = async (userId) => {
   
     return manager;
   };
+
+  const getFcmTokenByUserId = async (userId) => {
+    if (!userId) return null;
+  
+    const token = await FcmToken.findByPk({
+      where: { user_id: userId },
+      //order: [['createdAt', 'DESC']], // hoặc updatedAt
+      attributes: ['token']
+    });
+  
+    return token?.token || null;
+  };
   
 
 
@@ -186,6 +198,7 @@ module.exports = {
   getDepartmentIdByUserId,
   getGroupByUserId,
   userInGroups,
- getUserCheckManager,
-  getUserApprovePosition
+  getUserCheckManager,
+  getUserApprovePosition,
+  getFcmTokenByUserId
 };

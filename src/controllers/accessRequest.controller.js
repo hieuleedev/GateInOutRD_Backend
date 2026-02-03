@@ -19,6 +19,7 @@ import {
 import { sendMail } from '../utils/mail.util.js';
 import sequelize from '../config/database.js';
 import { Op, fn, col, literal } from 'sequelize';
+import { pushToUser } from '../utils/push.util.js';
 
 
 
@@ -578,10 +579,19 @@ export const approveRequest = async (req, res) => {
       // 🔔 notify approver kế tiếp
       await Notification.create({
         user_id: nextApproval.approver_id,
-        title: 'Yêu cầu cần duyệt',
+        title: 'Đăng kí ra vào cổng',
         content: 'Bạn có một yêu cầu ra/vào cổng cần duyệt',
         type: 'REQUEST_CREATED',
         reference_id: requestId
+      });
+
+      await pushToUser(nextApproval.approver_id, {
+        title: "Yêu cầu cần duyệt",
+        body: "Bạn có một yêu cầu ra/vào cổng cần duyệt",
+        data: {
+          type: "REQUEST_CREATED",
+          requestId: requestId,
+        },
       });
 
       const requestDetail = await AccessRequest.findByPk(requestId, {
@@ -718,6 +728,15 @@ export const approveRequest = async (req, res) => {
         content: 'Yêu cầu ra/vào cổng của bạn đã được duyệt đầy đủ',
         type: 'REQUEST_APPROVED',
         reference_id: requestId
+      });
+
+      await pushToUser(request.user_id, {
+        title: "Đăng kí ra vào cổng",
+        body: "Yêu cầu ra/vào cổng của bạn đã được duyệt hoàn tất",
+        data: {
+          type: "REQUEST_APPROVED",
+          requestId: requestId,
+        },
       });
 
       // 📧 MAIL cho người tạo đơn

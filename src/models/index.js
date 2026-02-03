@@ -13,6 +13,7 @@ const AccessLog = require('./AccessLog');
 const Department = require('./Department');
 const Position = require('./Position');
 const Notification = require('./Notification');
+const FcmToken = require("./FcmToken");
 
 // ===============================
 // ===== KHAI BÁO QUAN HỆ ========
@@ -155,6 +156,17 @@ Notification.belongsTo(User, {
   as: 'user'
 });
 
+User.hasMany(FcmToken, {
+  foreignKey: "user_id",
+  as: "fcmTokens",
+});
+
+FcmToken.belongsTo(User, {
+  foreignKey: "user_id",
+  as: "user",
+});
+
+
 
 
 const initDB = async () => {
@@ -186,5 +198,6 @@ module.exports = {
   AccessLog,
   Department,
   Position,
-  Notification
+  Notification,
+  FcmToken
 };

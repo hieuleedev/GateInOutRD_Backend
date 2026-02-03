@@ -9,5 +9,5 @@ router.get(
   authMiddleware,
   userController.getStaffInMyDepartment
 );
-
+router.post("/save-fcm-token", authMiddleware, userController.saveFcmToken);
 module.exports = router;
