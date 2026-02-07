@@ -2,13 +2,14 @@ import { Op } from 'sequelize';
 import sequelize from '../config/database.js';
 import { sendMail } from '../utils/mail.util.js';
 import Card from '../models/Card.js';
+import Factory from '../models/Factory.js';
 import AccessRequest from '../models/AccessRequest.js';
 import AccessRequestCompanion from '../models/AccessRequestCompanion.js';
 import AccessLog from '../models/AccessLog.js';
 import User from '../models/User.js';
 import Department from '../models/Department.js';
-import { Factory } from '../models/index.js';
 import { formatVNTime } from '../utils/time.js';
+import { pushToUser } from '../utils/push.util.js';
 
 import {
   getGroupByUserId,
@@ -18,6 +19,7 @@ import {
 
 export const getAccessCardInfo = async (req, res) => {
   try {
+    console.log("user", req.user.id);
     const { card } = req.query;
 
     if (!card) {
@@ -25,6 +27,10 @@ export const getAccessCardInfo = async (req, res) => {
         message: 'card_code is required',
       });
     }
+
+    const factory = await Factory.findOne({
+      where: { manager_id: req.user.id },
+    });
 
     // 1️⃣ Tìm card
     const cardData = await Card.findOne({
@@ -78,7 +84,10 @@ export const getAccessCardInfo = async (req, res) => {
         },
       ],
     });
-    
+
+    // ===============================
+    // XỬ LÝ KHI KHÔNG TÌM THẤY REQUEST HỢP LỆ
+    // ===============================
     if (!accessRequest) {
       const lastRequest = await AccessRequest.findOne({
         where: { card_id: cardData.id },
@@ -110,7 +119,7 @@ export const getAccessCardInfo = async (req, res) => {
           },
         ],
       });
-    
+
       if (!lastRequest) {
         return res.json({
           card: cardData,
@@ -118,14 +127,11 @@ export const getAccessCardInfo = async (req, res) => {
           message: "Không có yêu cầu ra/vào",
         });
       }
-    
-      // ===============================
-      // 1) Check giới hạn gửi mail
-      // ===============================
-      const MAX_MAIL_SENT = 2; // gửi tối đa 2 lần (0->1->2). Lần thứ 3 trở đi không gửi nữa
-    
+
+      // Check giới hạn gửi mail
+      const MAX_MAIL_SENT = 2;
       const currentCount = lastRequest.mail_sent_count ?? 0;
-    
+
       if (currentCount >= MAX_MAIL_SENT) {
         return res.json({
           card: cardData,
@@ -134,12 +140,10 @@ export const getAccessCardInfo = async (req, res) => {
           access_request: lastRequest,
         });
       }
-    
-      // ===============================
-      // 2) Lấy người duyệt
-      // ===============================
+
+      // Lấy người duyệt
       const approval = await getUserApprovePosition(lastRequest.user_id);
-    
+
       if (!approval?.MailAdress) {
         return res.json({
           card: cardData,
@@ -148,24 +152,20 @@ export const getAccessCardInfo = async (req, res) => {
           access_request: lastRequest,
         });
       }
-    
+
       const viewLink = `${process.env.WEB_URL}/access-requests/${lastRequest.id}`;
-    
-      // ===============================
-      // 3) Update DB trước (atomic)
-      //    tránh spam khi quẹt nhiều lần
-      // ===============================
+
+      // Update DB trước (atomic) - tránh spam khi quẹt nhiều lần
       const [affectedRows] = await AccessRequest.update(
         { mail_sent_count: currentCount + 1 },
         {
           where: {
             id: lastRequest.id,
-            mail_sent_count: currentCount, // điều kiện để chống race condition
+            mail_sent_count: currentCount,
           },
         }
       );
-    
-      // Nếu không update được nghĩa là có request khác vừa tăng count rồi => không gửi nữa
+
       if (affectedRows === 0) {
         return res.json({
           card: cardData,
@@ -174,10 +174,8 @@ export const getAccessCardInfo = async (req, res) => {
           access_request: lastRequest,
         });
       }
-    
-      // ===============================
-      // 4) Gửi mail
-      // ===============================
+
+      // Gửi mail
       await sendMail({
         to: approval.MailAdress,
         subject: "[ACCESS] Yêu cầu ra/vào cần duyệt lại",
@@ -210,7 +208,7 @@ export const getAccessCardInfo = async (req, res) => {
         </p>
         `,
       });
-    
+
       return res.json({
         card: cardData,
         allowed: false,
@@ -221,55 +219,73 @@ export const getAccessCardInfo = async (req, res) => {
         },
       });
     }
-    
 
-    // 3️⃣ Access logs
+    // ===============================
+    // XỬ LÝ KHI TÌM THẤY REQUEST HỢP LỆ
+    // ===============================
+
+    // Kiểm tra status trước khi xử lý log
+    if (accessRequest.status === 'REJECTED' || accessRequest.status === 'PENDING') {
+      // Tìm action từ logs hiện có (không tạo log mới)
+      const logs = await AccessLog.findAll({
+        where: { request_id: accessRequest.id },
+        order: [['access_time', 'ASC']],
+      });
+
+      const action = logs.length === 0 ? 'OUT' : (logs.length % 2 === 0 ? 'OUT' : 'IN');
+
+      return res.json({
+        card: cardData,
+        allowed: false,
+        action,
+        persisted: false,
+        access_request: accessRequest,
+        message: "Yêu cầu chưa được duyệt hoặc đã bị từ chối",
+      });
+    }
+
+    // Chỉ xử lý khi status === 'APPROVED'
     const logs = await AccessLog.findAll({
       where: { request_id: accessRequest.id },
       order: [['access_time', 'ASC']],
     });
 
-    let action = 'OUT';
-    let inserted = false;
+    // Xác định action dựa trên số lượng logs
+    const MAX_LOGS = 4;
 
-    if (logs.length === 0) {
-      action = 'OUT';
-      inserted = true;
-    } else if (logs.length === 1) {
-      action = 'IN';
-      inserted = true;
-    } else {
-      action = logs.length % 2 === 0 ? 'OUT' : 'IN';
-    }
-    if (accessRequest.status === 'REJECTED' || accessRequest.status === 'PENDING') {
-      return res.json({
-        card: cardData,
-        allowed: false,
-        action,
-        persisted: false, // ❗ không ghi log
-        access_request: accessRequest,
-        message: "Yêu cầu chưa được duyệt hoặc đã bị từ chối",
-      });
-    }
+    const action = logs.length % 2 === 0 ? 'OUT' : 'IN';
+    const shouldCreateLog = logs.length < MAX_LOGS;
     
-    if (inserted) {
+
+    // Tạo log nếu cần
+    if (shouldCreateLog) {
       await AccessLog.create({
         user_id: accessRequest.user_id,
         card_id: cardData.id,
         request_id: accessRequest.id,
+        factory_id: factory.id,
         action,
         gate: 'MAIN_GATE',
-        location: 'FACTORY',
+        location: factory ? factory.factory_name : "",
         access_time: sequelize.fn('NOW'),
+      });
+
+      // Gửi notification
+      await pushToUser(accessRequest.factory.manager_id, {
+        title: "Đăng kí ra vào cổng",
+        body: `${accessRequest?.user?.FullName} đã được phép ${action === 'OUT' ? 'ra' : 'vào'} cổng tại ${factory?.factory_name}`,
+        data: {
+          type: "REQUEST",
+          requestId: accessRequest.id,
+        },
       });
     }
 
-    // ⚠️ FIX BUG: dùng === thay vì =
     return res.json({
       card: cardData,
       allowed: true,
       action,
-      persisted: inserted,
+      persisted: shouldCreateLog,
       access_request: accessRequest,
     });
 

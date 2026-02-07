@@ -857,6 +857,16 @@ export const rejectRequest = async (req, res) => {
       reference_id: requestId
     });
 
+    await pushToUser(request.user_id, {
+      title: "Đăng kí ra vào cổng",
+      body: `Yêu cầu ra/vào cổng của bạn đã được bị từ chối, Lý do: ${reason}`,
+      
+      data: {
+        type: "REQUEST_APPROVED",
+        requestId: requestId,
+      },
+    });
+
     // 📧 MAIL
     if (requestUser?.MailAdress) {
       const viewLink = `${process.env.WEB_URL}/access-requests/${requestId}`;

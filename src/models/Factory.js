@@ -17,7 +17,13 @@ const Factory = sequelize.define('Factory', {
       type: DataTypes.STRING,
       allowNull: false
     },
-  
+
+    manager_id: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true,
+    },
+    
+
     address: DataTypes.STRING,
   
     status: {

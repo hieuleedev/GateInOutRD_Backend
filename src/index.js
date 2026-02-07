@@ -9,6 +9,7 @@ const accessRequestRoute = require('./routes/accessRequest.route');
 const cardRoute = require('./routes/card.route');
 const fileRoute = require('./routes/file.route');
 const notificationRoute = require('./routes/notification.route');
+const accessLogRoutes = require('./routes/accessLog.route');
 const path = require('path');
 
 const app = express();
@@ -33,6 +34,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/factories', factoryRoutes);
 app.use('/api/access-requests', accessRequestRoute);
 app.use('/api/card', cardRoute);
+app.use('/api/access-logs', accessLogRoutes);
 app.listen(3000, () => {
   console.log('🚀 Server running at http://localhost:3000');
 });

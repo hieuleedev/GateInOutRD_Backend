@@ -166,6 +166,27 @@ FcmToken.belongsTo(User, {
   as: "user",
 });
 
+Factory.belongsTo(User, {
+  foreignKey: "manager_id",
+  as: "manager",
+});
+
+User.hasMany(Factory, {
+  foreignKey: "manager_id",
+  as: "managedFactories",
+});
+
+/* ===== AccessLog ===== */
+AccessLog.belongsTo(Factory, {
+  foreignKey: 'factory_id',
+  as: 'factory'
+});
+
+/* ===== Factory ===== */
+Factory.hasMany(AccessLog, {
+  foreignKey: 'factory_id',
+  as: 'accessLogs'
+});
 
 
 
