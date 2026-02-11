@@ -11,4 +11,9 @@ router.get(
   userController.getStaffInMyDepartment
 );
 router.post("/save-fcm-token", authMiddleware, userController.saveFcmToken);
-module.exports = router;
+router.put(
+  "/change-password",
+  authMiddleware,
+  userController.changePassword
+);
+module.exports = router;``
