@@ -107,11 +107,11 @@ const getUserApprovePosition = async (userId) => {
   
       case 'NV NC Sản phẩm':
         // duyệt theo position hiện tại
-        return getApproversByPositionId(5);
+        return getApproversByPositionId(19);
   
       case 'Thiết kế chuyên môn':
         // duyệt theo position hiện tại
-        return getApproversByPositionId(5);
+        return getApproversByPositionId(4);
   
       case 'Thiết kế ô tô':
         return getApproversByPositionId(5);

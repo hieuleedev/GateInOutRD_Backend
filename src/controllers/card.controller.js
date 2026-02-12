@@ -10,6 +10,8 @@ import User from '../models/User.js';
 import Department from '../models/Department.js';
 import { formatVNTime } from '../utils/time.js';
 import { pushToUser } from '../utils/push.util.js';
+import dayjs from 'dayjs';
+
 
 import {
   getGroupByUserId,
@@ -269,11 +271,13 @@ export const getAccessCardInfo = async (req, res) => {
         location: factory ? factory.factory_name : "",
         access_time: sequelize.fn('NOW'),
       });
+      console.log("accessRequest",accessRequest.factory.manager_id)
+      const time = dayjs().format("HH:mm");
 
       // Gửi notification
       await pushToUser(accessRequest.factory.manager_id, {
-        title: "Đăng kí ra vào cổng",
-        body: `${accessRequest?.user?.FullName} đã được phép ${action === 'OUT' ? 'ra' : 'vào'} cổng tại ${factory?.factory_name}`,
+        title: "Đăng kí ra vào cổng",      
+        body: `Nhân sự ${accessRequest?.user?.FullName} vừa ${action === 'OUT' ? 'ra' : 'vào'} cổng tại ${factory?.factory_name} lúc ${time}, vui lòng quét mã QR để biết thêm chi tiết`,
         data: {
           type: "REQUEST",
           requestId: accessRequest.id,
