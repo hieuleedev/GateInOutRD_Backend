@@ -951,7 +951,18 @@ export const getAllAccessHistory = async (req, res) => {
           as: 'logs',
           order: [['access_time', 'ASC']],
           required: false
-        }
+        },
+        {
+          model: AccessRequestCompanion,
+          as: "companions",
+          include: [
+            {
+              model: User,
+              as: "user",
+              attributes: ["id", "FullName", "MSNV", "MailAdress"],
+            },
+          ],
+        },
       ]
     });
 
