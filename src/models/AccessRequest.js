@@ -16,7 +16,7 @@ const AccessRequest = sequelize.define('AccessRequest', {
 
     factory_id: {                 // 👈 thêm field này
         type: DataTypes.BIGINT.UNSIGNED,
-        allowNull: false
+        allowNull: true
       },
 
     approval_levels: {
@@ -42,8 +42,6 @@ const AccessRequest = sequelize.define('AccessRequest', {
       defaultValue: false
     },
     
-    
-
     approved_at: {
         type: DataTypes.DATE,
         allowNull: true
@@ -51,17 +49,27 @@ const AccessRequest = sequelize.define('AccessRequest', {
       
     card_id: {
       type: DataTypes.BIGINT.UNSIGNED,
-      allowNull: false
+      allowNull: true
+    },
+
+    private_card_id: {
+      type: DataTypes.BIGINT.UNSIGNED,
+      allowNull: true
     },
   
     planned_out_time: {
       type: DataTypes.DATE,
-      allowNull: false
+      allowNull: true
     },
   
     planned_in_time: {
       type: DataTypes.DATE,
-      allowNull: false
+      allowNull: true
+    },
+
+    request_type: {
+      type: DataTypes.ENUM('MISSION', 'LATE_ENTRY'),
+      allowNull: true
     },
   
     reason: DataTypes.TEXT,

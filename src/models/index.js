@@ -14,6 +14,8 @@ const Department = require('./Department');
 const Position = require('./Position');
 const Notification = require('./Notification');
 const FcmToken = require("./FcmToken");
+const CardPrivate = require('./CardPrivate');
+
 
 // ===============================
 // ===== KHAI BÁO QUAN HỆ ========
@@ -188,6 +190,18 @@ Factory.hasMany(AccessLog, {
   as: 'accessLogs'
 });
 
+User.hasOne(CardPrivate, { foreignKey: 'user_id' });
+CardPrivate.belongsTo(User, { foreignKey: 'user_id' });
+
+AccessRequest.belongsTo(CardPrivate, {
+  foreignKey: 'private_card_id',
+  as: 'privateCard'
+});
+
+CardPrivate.hasMany(AccessRequest, {
+  foreignKey: 'private_card_id',
+  as: 'accessRequests'
+});
 
 
 const initDB = async () => {
@@ -220,5 +234,6 @@ module.exports = {
   Department,
   Position,
   Notification,
-  FcmToken
+  FcmToken,
+  CardPrivate
 };

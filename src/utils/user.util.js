@@ -167,6 +167,29 @@ const getUserApprovePosition = async (userId) => {
     return manager;
   };
 
+
+  const getUserLevel1 = async (userId) => {
+    if (!userId) return null;
+
+    // ✅ Mảng ID mặc định trong function
+    const allowedUserIds = [383]; // sửa theo nhu cầu
+  
+    // ✅ Nếu không nằm trong mảng → return luôn
+    if (!allowedUserIds.includes(userId)) {
+      return null;
+    }
+  
+    // ✅ Nếu có trong mảng → mới query DB
+    const user = await User.findByPk(userId, {
+      include: [
+        { model: Department, as: 'department', attributes: ['id', 'NameDept'] },
+        { model: Position, as: 'position', attributes: ['id', 'NamePosition'] }
+      ]
+    });
+  
+    return user || null;
+  };
+
   const getFcmTokenByUserId = async (userId) => {
     if (!userId) return null;
   
@@ -200,5 +223,6 @@ module.exports = {
   userInGroups,
   getUserCheckManager,
   getUserApprovePosition,
-  getFcmTokenByUserId
+  getFcmTokenByUserId,
+  getUserLevel1
 };

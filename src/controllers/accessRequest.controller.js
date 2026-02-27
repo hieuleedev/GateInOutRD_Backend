@@ -8,11 +8,13 @@ import {
   Notification,
   AccessLog,
   Department,
-  Position
+  Position,
+  CardPrivate
 } from '../models/index.js';
 
 import {
   getGroupByUserId,
+  getUserLevel1,
   getUserApprovePosition,
   getUserCheckManager
 } from '../utils/user.util.js';
@@ -141,6 +143,14 @@ import { pushToUser } from '../utils/push.util.js';
 
 
 export const createAccessRequest = async (req, res) => {
+  console.log("req",req)
+  if (
+    req.body.requestType === 'DI_TRE' ||
+    req.body.requestType === 'VE_TRE'
+  ) {
+    return await createAccessRequestLate(req, res);
+  }
+
   const t = await sequelize.transaction();
   try {
     const {
@@ -305,6 +315,7 @@ export const createAccessRequest = async (req, res) => {
     
 
     // 3️⃣ Xác định người duyệt
+    const userLevel1 = await getUserLevel1(user_id);
     const manager = await getUserCheckManager(user_id);        // cấp 2
     const approver = await getUserApprovePosition(user_id);    // cấp 3
 
@@ -332,49 +343,67 @@ export const createAccessRequest = async (req, res) => {
     }
 
     // 6️⃣ TẠO DANH SÁCH DUYỆT (QUAN TRỌNG NHẤT)
-    const approverRows = [];
-    let level = 1;
-    
-    // Cấp 1: user tạo đơn → PENDING
+// 6️⃣ TẠO DANH SÁCH DUYỆT
+
+const approverRows = [];
+let level = 1;
+
+// 👇 Nếu user nằm trong nhóm chỉ duyệt 1 cấp
+const level1ApprovedIds = [1,2,3];
+
+if (level1ApprovedIds.includes(user_id)) {
+
+  // Chỉ tạo 1 cấp duyệt (user tự duyệt hoặc auto duyệt)
+  approverRows.push({
+    request_id: request.id,
+    approver_id: user_id,
+    approval_level: 1,
+    decision: 'PENDING'   // hoặc 'APPROVED' nếu muốn auto duyệt luôn
+  });
+
+} else {
+
+  // Luồng duyệt bình thường nhiều cấp
+
+  // Cấp 1
+  approverRows.push({
+    request_id: request.id,
+    approver_id: user_id,
+    approval_level: level,
+    decision: 'PENDING'
+  });
+  level++;
+
+  // Cấp 2
+  if (manager && manager.id !== user_id) {
     approverRows.push({
       request_id: request.id,
-      approver_id: user_id,
+      approver_id: manager.id,
       approval_level: level,
-      decision: 'PENDING'
+      decision: null
     });
     level++;
-    
-    // Cấp 2: manager (nếu khác user) → NULL
-    if (manager && manager.id !== user_id) {
-      approverRows.push({
-        request_id: request.id,
-        approver_id: manager.id,
-        approval_level: level,
-        decision: null
-      });
-      level++;
-    }
-    
-    // Cấp 3: approver theo group → NULL
-    if (
-      approver &&
-      approver.id !== user_id &&
-      approver.id !== manager?.id
-    ) {
-      approverRows.push({
-        request_id: request.id,
-        approver_id: approver.id,
-        approval_level: level,
-        decision: null
-      });
-      level++;
-    }
-    
+  }
 
-    await AccessRequestApproval.bulkCreate(
-      approverRows,
-      { transaction: t }
-    );
+  // Cấp 3
+  if (
+    approver &&
+    approver.id !== user_id &&
+    approver.id !== manager?.id
+  ) {
+    approverRows.push({
+      request_id: request.id,
+      approver_id: approver.id,
+      approval_level: level,
+      decision: null
+    });
+  }
+}
+
+await AccessRequestApproval.bulkCreate(
+  approverRows,
+  { transaction: t }
+);
 
     // 7️⃣ Cập nhật tổng số cấp duyệt
     await request.update({
@@ -395,6 +424,203 @@ export const createAccessRequest = async (req, res) => {
     await t.rollback();
     console.error(error);
     return res.status(500).json({ message: 'Lỗi server' });
+  }
+};
+
+export const createAccessRequestLate = async (req, res) => {
+
+  const t = await sequelize.transaction();
+
+  try {
+    const {
+      checkInTime,
+      checkOutTime,
+      reason,
+      requestType
+    } = req.body;
+
+    const user_id = req.user.id;
+
+    // ===============================
+    // 1️⃣ VALIDATE
+    // ===============================
+
+    if (!reason) {
+      await t.rollback();
+      return res.status(400).json({ message: "Thiếu lý do" });
+    }
+
+    if (!['DI_TRE', 'VE_TRE'].includes(requestType)) {
+      await t.rollback();
+      return res.status(400).json({ message: "Loại đơn không hợp lệ" });
+    }
+
+    if (requestType === 'DI_TRE' && !checkOutTime) {
+      await t.rollback();
+      return res.status(400).json({ message: "Thiếu thời gian vào" });
+    }
+
+    if (requestType === 'VE_TRE' && !checkInTime) {
+      await t.rollback();
+      return res.status(400).json({ message: "Thiếu thời gian ra" });
+    }
+
+    // ===============================
+    // 2️⃣ LẤY THẺ CÁ NHÂN
+    // ===============================
+
+    const privateCard = await CardPrivate.findOne({
+      where: { user_id },
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    });
+
+    if (!privateCard) {
+      await t.rollback();
+      return res.status(400).json({
+        message: "Bạn chưa được cấp thẻ cá nhân"
+      });
+    }
+
+    // ===============================
+    // 3️⃣ SET THỜI GIAN ĐÚNG THEO LOẠI
+    // ===============================
+
+    const plannedOutTime =
+      requestType === 'VE_TRE' ? checkInTime : null;
+
+    const plannedInTime =
+      requestType === 'DI_TRE' ? checkOutTime : null;
+
+    // ===============================
+    // 4️⃣ CHECK TRÙNG
+    // ===============================
+
+    const conflict = await AccessRequest.findOne({
+      where: {
+        private_card_id: privateCard.id,
+        status: { [Op.notIn]: ["REJECTED", "CANCELLED"] },
+
+        ...(plannedOutTime && {
+          planned_out_time: plannedOutTime
+        }),
+
+        ...(plannedInTime && {
+          planned_in_time: plannedInTime
+        })
+      },
+      transaction: t,
+      lock: t.LOCK.UPDATE
+    });
+
+    if (conflict) {
+      await t.rollback();
+      return res.status(400).json({
+        message: "Thẻ cá nhân đã được sử dụng trong khung giờ này"
+      });
+    }
+
+    // ===============================
+    // 5️⃣ TẠO REQUEST
+    // ===============================
+
+    const request = await AccessRequest.create({
+      user_id,
+      private_card_id: privateCard.id,
+      request_type: 'LATE_ENTRY',
+      planned_out_time: plannedOutTime,
+      planned_in_time: plannedInTime,
+      reason,
+      status: 'PENDING',
+      current_approval_level: 0
+    }, { transaction: t });
+
+    // ===============================
+    // 6️⃣ TẠO CẤP DUYỆT
+    // ===============================
+
+    const approverRows = [];
+    let level = 1;
+
+    const manager = await getUserCheckManager(user_id);
+    const approver = await getUserApprovePosition(user_id);
+
+    const level1ApprovedIds = [1, 2, 3];
+
+    if (level1ApprovedIds.includes(user_id)) {
+
+      approverRows.push({
+        request_id: request.id,
+        approver_id: user_id,
+        approval_level: 1,
+        decision: 'PENDING'
+      });
+
+    } else {
+
+      // Cấp 1: Người tạo
+      approverRows.push({
+        request_id: request.id,
+        approver_id: user_id,
+        approval_level: level,
+        decision: 'PENDING'
+      });
+      level++;
+
+      // Cấp 2: Manager
+      if (manager && manager.id !== user_id) {
+        approverRows.push({
+          request_id: request.id,
+          approver_id: manager.id,
+          approval_level: level,
+          decision: null
+        });
+        level++;
+      }
+
+      // Cấp 3: Approver theo chức vụ
+      if (
+        approver &&
+        approver.id !== user_id &&
+        approver.id !== manager?.id
+      ) {
+        approverRows.push({
+          request_id: request.id,
+          approver_id: approver.id,
+          approval_level: level,
+          decision: null
+        });
+      }
+    }
+
+    await AccessRequestApproval.bulkCreate(
+      approverRows,
+      { transaction: t }
+    );
+
+    await request.update({
+      approval_levels: approverRows.length
+    }, { transaction: t });
+
+    // ===============================
+    // 7️⃣ COMMIT
+    // ===============================
+
+    await t.commit();
+
+    return res.status(201).json({
+      message: "Đăng ký đi trễ/về trễ thành công",
+      data: {
+        request_id: request.id,
+        request_type: requestType,
+        approval_levels: approverRows.length
+      }
+    });
+
+  } catch (error) {
+    await t.rollback();
+    console.error(error);
+    return res.status(500).json({ message: "Lỗi server" });
   }
 };
 
