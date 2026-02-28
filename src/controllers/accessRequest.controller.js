@@ -879,7 +879,7 @@ export const approveRequest = async (req, res) => {
           subject: "Yêu cầu xác nhận/phê duyệt ra vào cổng",
           html: `
             <p>Xin chào <b>${nextUser.FullName}</b>,</p>
-            <p><b>Bạn có đơn đăng ký cần xác nhận/phê duyệt</b></p>
+            <p><b>Bạnn có yêu cầu ra vào cổng cần được xem xét/phê duyệt</b></p>
         
             <table style="width:100%;border-collapse:collapse;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;">
               <tbody>
