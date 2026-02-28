@@ -33,8 +33,9 @@ const getDepartmentIdByUserId = async (userId) => {
   if (!userId) return null;
 
   const user = await User.findByPk(userId, {
-    attributes: ['IDDepartment']
+    attributes: ['IDDepartment','id']
   });
+  console.log("usser",user)
 
   return user ;
 };
@@ -107,7 +108,7 @@ const getUserApprovePosition = async (userId) => {
   
       case 'NV NC Sản phẩm':
         // duyệt theo position hiện tại
-        return getApproversByPositionId(19);
+        return getApproversByPositionId(177);
   
       case 'Thiết kế chuyên môn':
         // duyệt theo position hiện tại
@@ -122,7 +123,19 @@ const getUserApprovePosition = async (userId) => {
       case 'Mô phỏng & Thử nghiệm':
           // lãnh đạo → duyệt cấp cao
           return getApproversByPositionId(5);
-
+      case 'Phòng Phát triển sản phẩm xe Tải':
+            // lãnh đạo → duyệt cấp cao
+          return getDepartmentIdByUserId(260);
+      case 'Phòng Phát triển sản phẩm xe Bus':
+            // lãnh đạo → duyệt cấp cao
+          return getDepartmentIdByUserId(123);
+      
+      case 'Phòng Phát triển sản phẩm xe Royal & Du lịch':
+            // lãnh đạo → duyệt cấp cao
+          return getDepartmentIdByUserId(177);
+      case 'Phòng Phát triển sản phẩm xe Minibus & Năng lương mới':
+            // lãnh đạo → duyệt cấp cao
+          return getDepartmentIdByUserId(324);
       default:
         return null;
     }

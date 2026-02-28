@@ -21,7 +21,8 @@ import {
 
 export const getAccessCardInfo = async (req, res) => {
   try {
-    console.log("user", req.user.id);
+    //console.log("user", req.user.id);
+    console.log("shdh")
     const { card } = req.query;
 
     if (!card) {

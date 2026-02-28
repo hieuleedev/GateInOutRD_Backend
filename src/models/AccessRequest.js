@@ -68,7 +68,17 @@ const AccessRequest = sequelize.define('AccessRequest', {
     },
 
     request_type: {
-      type: DataTypes.ENUM('MISSION', 'LATE_ENTRY'),
+      type: DataTypes.ENUM(
+        'MISSION',
+        'LATE_ENTRY',
+        'TAC_NGHIEP',
+        'BAN_GIAO_XE',
+        'XUAT_VAT_TU',
+        'THU_NGHIEM_XE',
+        'DI_TRE',
+        'VE_TRE',
+        'VE_SOM'
+      ),
       allowNull: true
     },
   

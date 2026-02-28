@@ -16,7 +16,7 @@ const AccessLog = sequelize.define('AccessLog', {
   
   factory_id: {
     type: DataTypes.BIGINT.UNSIGNED,
-    allowNull: false   // thường log nào cũng phải thuộc 1 factory
+    allowNull: true   // thường log nào cũng phải thuộc 1 factory
   },
 
 

@@ -143,10 +143,11 @@ import { pushToUser } from '../utils/push.util.js';
 
 
 export const createAccessRequest = async (req, res) => {
-  console.log("req",req)
+  //console.log("req",req)
   if (
     req.body.requestType === 'DI_TRE' ||
-    req.body.requestType === 'VE_TRE'
+    req.body.requestType === 'VE_TRE' ||
+    req.body.requestType === 'VE_SOM'
   ) {
     return await createAccessRequestLate(req, res);
   }
@@ -450,17 +451,21 @@ export const createAccessRequestLate = async (req, res) => {
       return res.status(400).json({ message: "Thiếu lý do" });
     }
 
-    if (!['DI_TRE', 'VE_TRE'].includes(requestType)) {
+    if (!['DI_TRE', 'VE_TRE', 'VE_SOM'].includes(requestType)) {
       await t.rollback();
       return res.status(400).json({ message: "Loại đơn không hợp lệ" });
     }
-
     if (requestType === 'DI_TRE' && !checkOutTime) {
       await t.rollback();
       return res.status(400).json({ message: "Thiếu thời gian vào" });
     }
 
     if (requestType === 'VE_TRE' && !checkInTime) {
+      await t.rollback();
+      return res.status(400).json({ message: "Thiếu thời gian ra" });
+    }
+
+    if (requestType === 'VE_SOM' && !checkInTime) {
       await t.rollback();
       return res.status(400).json({ message: "Thiếu thời gian ra" });
     }
@@ -487,10 +492,14 @@ export const createAccessRequestLate = async (req, res) => {
     // ===============================
 
     const plannedOutTime =
-      requestType === 'VE_TRE' ? checkInTime : null;
-
-    const plannedInTime =
-      requestType === 'DI_TRE' ? checkOutTime : null;
+    (requestType === 'VE_TRE' || requestType === 'VE_SOM')
+      ? checkInTime
+      : null;
+  
+  const plannedInTime =
+    requestType === 'DI_TRE'
+      ? checkOutTime
+      : null;
 
     // ===============================
     // 4️⃣ CHECK TRÙNG
@@ -527,7 +536,7 @@ export const createAccessRequestLate = async (req, res) => {
     const request = await AccessRequest.create({
       user_id,
       private_card_id: privateCard.id,
-      request_type: 'LATE_ENTRY',
+      request_type: requestType,
       planned_out_time: plannedOutTime,
       planned_in_time: plannedInTime,
       reason,
