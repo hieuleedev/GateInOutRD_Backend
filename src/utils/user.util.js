@@ -136,6 +136,12 @@ const getUserApprovePosition = async (userId) => {
       case 'Phòng Phát triển sản phẩm xe Minibus & Năng lương mới':
             // lãnh đạo → duyệt cấp cao
           return getDepartmentIdByUserId(324);
+      case 'Phòng Sản phẩm xe Tải, Bus & SMRM':
+            // lãnh đạo → duyệt cấp cao
+          return getDepartmentIdByUserId(141);
+      case 'Sản xuất mẫu':
+            // lãnh đạo → duyệt cấp cao
+          return getDepartmentIdByUserId(268);
       default:
         return null;
     }

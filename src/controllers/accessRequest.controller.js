@@ -350,7 +350,7 @@ const approverRows = [];
 let level = 1;
 
 // 👇 Nếu user nằm trong nhóm chỉ duyệt 1 cấp
-const level1ApprovedIds = [1,2,3];
+const level1ApprovedIds = [356, 2, 3, 72, 91, 121, 128, 139, 179, 189, 205, 354, 411, 453];
 
 if (level1ApprovedIds.includes(user_id)) {
 
