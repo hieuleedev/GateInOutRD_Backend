@@ -77,8 +77,14 @@ const AccessRequest = sequelize.define('AccessRequest', {
         'THU_NGHIEM_XE',
         'DI_TRE',
         'VE_TRE',
-        'VE_SOM'
+        'VE_SOM',
+        'TAC_NGHIEP_MANG_VAT_TU'
       ),
+      allowNull: true
+    },
+    
+    material_note: {
+      type: DataTypes.TEXT,
       allowNull: true
     },
   

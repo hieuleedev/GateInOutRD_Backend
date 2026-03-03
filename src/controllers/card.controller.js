@@ -132,7 +132,7 @@ export const getAccessCardInfo = async (req, res) => {
       }
 
       // Check giới hạn gửi mail
-      const MAX_MAIL_SENT = 2;
+      const MAX_MAIL_SENT = 1;
       const currentCount = lastRequest.mail_sent_count ?? 0;
 
       if (currentCount >= MAX_MAIL_SENT) {
@@ -248,13 +248,37 @@ export const getAccessCardInfo = async (req, res) => {
     }
 
     // Chỉ xử lý khi status === 'APPROVED'
-    const logs = await AccessLog.findAll({
-      where: { request_id: accessRequest.id },
-      order: [['access_time', 'ASC']],
+    // const logs = await AccessLog.findAll({
+    //   where: { request_id: accessRequest.id },
+    //   order: [['access_time', 'ASC']],
+    // });
+    // Chỉ xử lý khi status === 'APPROVED'
+const logs = await AccessLog.findAll({
+  where: { request_id: accessRequest.id },
+  order: [['access_time', 'ASC']],
+});
+
+// ✅ Chặn quét 2 lần liên tiếp trong vòng 5 phút
+if (logs.length > 0) {
+  const lastLog = logs[logs.length - 1];
+  const lastAccessTime = dayjs(lastLog.access_time);
+  const now = dayjs();
+  const diffMinutes = now.diff(lastAccessTime, 'minute');
+
+  if (diffMinutes < 5) {
+    return res.json({
+      card: cardData,
+      allowed: true,
+      action: logs.length % 2 === 0 ? 'OUT' : 'IN',
+      persisted: false,
+      access_request: accessRequest,
+      message: `Vui lòng chờ ${5 - diffMinutes} phút trước khi quét lại`,
     });
+  }
+}
 
     // Xác định action dựa trên số lượng logs
-    const MAX_LOGS = 4;
+    const MAX_LOGS = 16;
 
     const action = logs.length % 2 === 0 ? 'OUT' : 'IN';
     const shouldCreateLog = logs.length < MAX_LOGS;

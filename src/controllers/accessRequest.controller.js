@@ -159,6 +159,8 @@ export const createAccessRequest = async (req, res) => {
       checkInTime,
       checkOutTime,
       reason,
+      material_note,
+      request_type,
       companions = []
     } = req.body;
 
@@ -170,6 +172,12 @@ export const createAccessRequest = async (req, res) => {
     if (!checkInTime) missingFields.push("Thiếu Thời gian vào");
     if (!checkOutTime) missingFields.push("Thiếu Thời gian ra");
     if (!reason) missingFields.push("Thiếu lý do ra cổng");
+    if (
+      req.body.request_type === 'TAC_NGHIEP_MANG_VAT_TU' &&
+      !material_note
+    ) {
+      missingFields.push("Thiếu vật tư mang ra");
+    }
     
     if (missingFields.length > 0) {
       await t.rollback();
@@ -242,7 +250,7 @@ export const createAccessRequest = async (req, res) => {
           const conflict = await AccessRequest.findOne({
             where: {
               card_id: c.id,
-              status: { [Op.notIn]: ["REJECTED", "CANCELLED"] },
+              status: { [Op.notIn]: ["CANCELLED"] },
               [Op.and]: [
                 { planned_out_time: { [Op.lt]: newEnd } }, // existing_start < new_end
                 { planned_in_time: { [Op.gt]: newStart } }, // existing_end > new_start
@@ -327,6 +335,8 @@ export const createAccessRequest = async (req, res) => {
       card_id: selectedCard.id,
       planned_out_time: checkInTime,
       planned_in_time: checkOutTime,
+      request_type,
+      material_note: material_note ? material_note : null,
       reason,
       status: 'PENDING',
       current_approval_level: 0 // chưa duyệt cấp nào

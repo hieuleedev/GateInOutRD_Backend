@@ -1,5 +1,4 @@
 module.exports = {
-    secret: 'JWT_SECRET_KEY_123', // ❗đưa vào .env là tốt nhất
-    expiresIn: '1d'
-  };
-  
+  secret: 'JWT_SECRET_KEY_123', // nên đưa vào .env
+  expiresIn: '60d'
+};
